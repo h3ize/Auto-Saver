@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -48,6 +49,9 @@ public final class AutoBackupManager {
     private static boolean saveWarned;
     private static boolean backupWarned;
     private static boolean playersSinceBackup;
+    private static boolean internalSave;
+    private static boolean externalSaveActive;
+    private static int externalSaveTick;
     private static volatile long lastBackupMillis;
     private static volatile long lastBackupBytes;
     private static volatile String lastBackupName = "";
@@ -69,6 +73,8 @@ public final class AutoBackupManager {
         saveWarned = false;
         backupWarned = false;
         playersSinceBackup = false;
+        internalSave = false;
+        externalSaveActive = false;
         lastBackupMillis = 0L;
         lastBackupBytes = 0L;
         lastBackupName = "";
@@ -128,11 +134,30 @@ public final class AutoBackupManager {
     }
 
     @SubscribeEvent
+    public static void onLevelSave(LevelEvent.Save event) {
+        if (!(event.getLevel() instanceof ServerLevel level) || internalSave || BACKUP_RUNNING.get()) {
+            return;
+        }
+        MinecraftServer server = level.getServer();
+        if (!externalSaveActive) {
+            externalSaveActive = true;
+            sendIndicator(server, true);
+        }
+        externalSaveTick = server.getTickCount();
+    }
+
+    @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        MinecraftServer server = event.getServer();
+        if (externalSaveActive && server.getTickCount() > externalSaveTick) {
+            externalSaveActive = false;
+            if (!BACKUP_RUNNING.get()) {
+                sendIndicator(server, false);
+            }
+        }
         if (!Config.ENABLED.get()) {
             return;
         }
-        MinecraftServer server = event.getServer();
         if (server.getPlayerCount() > 0) {
             playersSinceBackup = true;
         }
@@ -202,7 +227,12 @@ public final class AutoBackupManager {
         sendIndicator(server, true);
         announce(server, "Auto-saving...");
         long start = System.nanoTime();
-        server.saveEverything(true, false, false);
+        internalSave = true;
+        try {
+            server.saveEverything(true, false, false);
+        } finally {
+            internalSave = false;
+        }
         long millis = (System.nanoTime() - start) / 1_000_000L;
         sendIndicator(server, false);
         announce(server, "Save complete (" + millis + " ms)");
@@ -293,6 +323,12 @@ public final class AutoBackupManager {
     public static void rescheduleSave() {
         saveCountdown = saveIntervalTicks();
         saveWarned = false;
+    }
+
+    public static void rescheduleAll() {
+        rescheduleSave();
+        backupCountdown = backupIntervalTicks();
+        backupWarned = false;
     }
 
     public static boolean isBackupRunning() {

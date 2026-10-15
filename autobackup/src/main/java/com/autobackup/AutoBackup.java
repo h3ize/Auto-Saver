@@ -25,7 +25,7 @@ public class AutoBackup {
         NeoForge.EVENT_BUS.register(AutoBackupManager.class);
         NeoForge.EVENT_BUS.register(AutoSaveCommand.class);
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            ClientSetup.init(modBus);
+            ClientSetup.init(modBus, container);
         }
     }
 

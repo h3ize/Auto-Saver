@@ -16,14 +16,19 @@ public final class SaveIndicatorLayer {
             ResourceLocation.fromNamespaceAndPath(AutoBackup.MODID, "textures/gui/arrow.png");
 
     private static final int WIDTH = 32;
-    private static final int HEIGHT = 46;
+    private static final int HEIGHT = 52;
     private static final int CHEST_SIZE = 32;
-    private static final int CHEST_Y = 14;
+    private static final int CHEST_Y = 20;
     private static final int ARROW_SIZE = 16;
     private static final int ARROW_X = 8;
     private static final float BOB_RANGE = 4.0F;
+    private static final int VANILLA_CLEARANCE = 28;
 
     private SaveIndicatorLayer() {
+    }
+
+    private static boolean vanillaIndicatorPossible(Minecraft minecraft) {
+        return minecraft.getSingleplayerServer() != null && minecraft.options.showAutosaveIndicator().get();
     }
 
     public static void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
@@ -53,6 +58,9 @@ public final class SaveIndicatorLayer {
             case TOP_LEFT, TOP_RIGHT -> margin;
             case BOTTOM_LEFT, BOTTOM_RIGHT -> graphics.guiHeight() - margin - height;
         };
+        if (corner == ClientConfig.Corner.BOTTOM_RIGHT && vanillaIndicatorPossible(minecraft)) {
+            y -= VANILLA_CLEARANCE;
+        }
 
         int arrowY = ClientConfig.BOB.get() ? Math.round(IndicatorState.bob() * BOB_RANGE) : 2;
 

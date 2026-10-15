@@ -34,7 +34,7 @@ public final class Config {
         builder.push("autosave");
         SAVE_INTERVAL_MINUTES = builder
                 .comment("Minutes between automatic world saves. Minimum 1.")
-                .defineInRange("intervalMinutes", 5, 1, 1440);
+                .defineInRange("intervalMinutes", 30, 1, 1440);
         SKIP_WHEN_EMPTY = builder
                 .comment("Skip saves and backups while nobody is online and nothing could have changed.")
                 .define("skipWhenEmpty", true);
@@ -59,8 +59,9 @@ public final class Config {
                         "Backups are grouped into one subfolder per world. A folder inside the world itself is refused.")
                 .define("directory", "");
         RETENTION_COUNT = builder
-                .comment("Keep only this many of the newest backups per world. 0 keeps everything.")
-                .defineInRange("keepLast", 10, 0, 1000);
+                .comment("Keep only this many of the newest backups per world. 1 (default) deletes the previous backup",
+                        "once a new one is made. 0 keeps everything.")
+                .defineInRange("keepLast", 1, 0, 1000);
         RETENTION_DAYS = builder
                 .comment("Delete backups older than this many days. 0 disables.")
                 .defineInRange("maxAgeDays", 0, 0, 3650);
