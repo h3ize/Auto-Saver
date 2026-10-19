@@ -83,6 +83,15 @@ public final class AutoBackupManager {
         synchronized (FROZEN) {
             FROZEN.clear();
         }
+        String worldName = String.valueOf(worldDirectory.getFileName());
+        try {
+            Path folder = BackupService.resolveBackupDirectory(worldDirectory, worldName);
+            LOGGER.info("Auto Backup active for '{}': enabled={}, save every {} min, backups {} every {} min, backup folder {}",
+                    worldName, Config.ENABLED.get(), Config.SAVE_INTERVAL_MINUTES.get(),
+                    Config.BACKUP_ENABLED.get() ? "on" : "off", Config.BACKUP_INTERVAL_MINUTES.get(), folder);
+        } catch (IOException e) {
+            LOGGER.error("Auto Backup: no usable backup folder, backups will fail until this is fixed", e);
+        }
     }
 
     @SubscribeEvent
@@ -230,11 +239,14 @@ public final class AutoBackupManager {
         internalSave = true;
         try {
             server.saveEverything(true, false, false);
+        } catch (RuntimeException e) {
+            LOGGER.error("Auto-save failed", e);
+            announce(server, "Auto-save failed, check the server log");
         } finally {
             internalSave = false;
+            sendIndicator(server, false);
         }
         long millis = (System.nanoTime() - start) / 1_000_000L;
-        sendIndicator(server, false);
         announce(server, "Save complete (" + millis + " ms)");
         return millis;
     }
@@ -257,17 +269,27 @@ public final class AutoBackupManager {
 
         sendIndicator(server, true);
         announce(server, "Backup starting...");
-        server.saveEverything(true, true, true);
-        synchronized (FROZEN) {
-            for (ServerLevel level : server.getAllLevels()) {
-                if (!level.noSave) {
-                    level.noSave = true;
-                    FROZEN.add(level);
+        try {
+            server.saveEverything(true, true, true);
+            synchronized (FROZEN) {
+                for (ServerLevel level : server.getAllLevels()) {
+                    if (!level.noSave) {
+                        level.noSave = true;
+                        FROZEN.add(level);
+                    }
                 }
             }
+            playersSinceBackup = false;
+            currentTask = executor.submit(() -> runBackup(server, worldDir, worldName, targetDir));
+        } catch (RuntimeException e) {
+            LOGGER.error("Backup could not start", e);
+            restoreLevels();
+            BACKUP_RUNNING.set(false);
+            currentTask = null;
+            sendIndicator(server, false);
+            announce(server, "Backup failed to start, check the server log");
+            return BackupStart.FAILED;
         }
-        playersSinceBackup = false;
-        currentTask = executor.submit(() -> runBackup(server, worldDir, worldName, targetDir));
         return BackupStart.STARTED;
     }
 
@@ -280,13 +302,13 @@ public final class AutoBackupManager {
             Path created = BackupService.createBackup(worldDir, worldName, targetDir);
             name = created.getFileName().toString();
             bytes = Files.size(created);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             failed = true;
             LOGGER.error("Backup failed", e);
         }
         try {
             BackupService.prune(targetDir, worldName);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             LOGGER.warn("Pruning old backups failed", e);
         }
         long millis = (System.nanoTime() - start) / 1_000_000L;
